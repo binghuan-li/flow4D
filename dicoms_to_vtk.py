@@ -31,9 +31,10 @@ args = parser.parse_args()
 #-----------------------------------------------------------------------------------------------------------------------
 ## Read dicom files and create numpy arrays
 data, meta = ut.read_acquisition(args.data_dir)
+print( meta['vendor'])
 if args.venc == (0,0,0):
     args.venc = meta['venc']
-arrayData = ut.seriesData_to_arrayData(data, meta)
+arrayData = ut.seriesData_to_arrayData2(data, meta)
 
 #-----------------------------------------------------------------------------------------------------------------------
 ## Automatic detection of magnitude series
@@ -67,10 +68,12 @@ print('Adjusting units.')
 if re.search('GE', meta['vendor'], re.IGNORECASE):
     velTemp *= 0.001  # m/s
 elif re.search('siemens', meta['vendor'], re.IGNORECASE) or re.search('philips', meta['vendor'], re.IGNORECASE):
+    ## in Philip machines the velocities are acquired in cm/s
     levels = 2**meta['HighBit']-1
     for d in range(3):
-        velTemp[:, :, :, :, d] = (velTemp[:, :, :, :, d] - levels) * args.venc[d] / levels
+        velTemp[:, :, :, :, d] = (velTemp[:, :, :, :, d] - levels) * int(args.venc[d]) / levels
     velTemp *= 0.01  # m/s
+    # velTemp *= 1 # m/s
 else:
     print('Manufacturer not found. Exiting.')
     sys.exit()

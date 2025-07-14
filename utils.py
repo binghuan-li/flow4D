@@ -12,7 +12,7 @@ from scipy.interpolate import RBFInterpolator, NearestNDInterpolator
 from scipy.spatial import distance
 import pyvista as pv
 import vtk
-from vmtk import vmtkscripts
+# from vmtk import vmtkscripts
 
 
 def get_dz(ds):
@@ -174,6 +174,7 @@ def seriesData_to_arrayData(seriesData, meta):
     arrayData = []
     for s in seriesData.keys():
         series = seriesData[s]
+        print(np.array(series).shape)
         newArr = np.zeros((meta['num_rows'], meta['num_cols'], meta['num_slices'], meta['num_frames']))
         try:
             #IPP = []
@@ -185,6 +186,7 @@ def seriesData_to_arrayData(seriesData, meta):
                     #IPP.append(frameBlock[i]['IPP'])
             arrayData.append(newArr)
         except:
+            print('call back by except')
             series = sorted(series, key=lambda k: k['info'].SliceLocation)
             #series = sorted(series, key=lambda k: k['FileName'])
             ids = np.arange(0, meta['num_slices'] * meta['num_frames'] - meta['num_frames'], meta['num_frames'])
@@ -192,6 +194,64 @@ def seriesData_to_arrayData(seriesData, meta):
                 for j in range(meta['num_frames']):
                     newArr[:, :, i, j] = series[ids[i] + j]['pixel_array']
             arrayData.append(newArr)
+
+    return arrayData
+
+def seriesData_to_arrayData2(seriesData, meta):
+    """
+    Convert directional or scalar DICOM slices into 4D arrays: (rows, cols, slices, frames).
+    Handles vector-valued images (shape: rows x cols x 3) by selecting correct direction.
+
+    Parameters:
+        seriesData (dict): Dictionary of DICOM slice groups keyed by direction (e.g., 'RL', 'AP', 'FH', 'MAG').
+        meta (dict): Metadata containing num_rows, num_cols, num_slices, num_frames.
+
+    Returns:
+        list of 4D NumPy arrays, one per direction.
+    """
+
+    # Define which index to extract from vector images
+
+    arrayData = []
+
+    for direction_key in seriesData.keys():
+        series = seriesData[direction_key]
+        direction_index = 0
+
+        # Allocate memory for 4D array
+        newArr = np.zeros((meta['num_rows'], meta['num_cols'], meta['num_slices'], meta['num_frames']))
+
+        try:
+            for j in range(1, meta['num_frames'] + 1):
+                # Select all slices for frame j
+                frameBlock = [
+                    elem for elem in series
+                    if elem['info'].get('TemporalPositionIdentifier') and
+                       int(elem['info'].TemporalPositionIdentifier) == j
+                ]
+
+                # Sort slices in anatomical Z-order
+                frameBlock = sorted(frameBlock, key=lambda k: k['info'].ImagePositionPatient[2])
+
+                for i in range(meta['num_slices']):
+                    img = frameBlock[i]['pixel_array']
+                    if img.ndim == 3 and img.shape[2] == 3 and direction_index is not None:
+                        img = img[:, :, direction_index]  # extract specific direction
+                    newArr[:, :, i, j - 1] = img
+
+        except Exception as e:
+            print(f"[Fallback mode for {direction_key}] Reason: {e}")
+            series = sorted(series, key=lambda k: k['info'].ImagePositionPatient[2])
+            ids = np.arange(0, meta['num_slices'] * meta['num_frames'] - meta['num_frames'], meta['num_frames'])
+
+            for i in range(len(ids)):
+                for j in range(meta['num_frames']):
+                    img = series[ids[i] + j]['pixel_array']
+                    if img.ndim == 3 and img.shape[2] == 3 and direction_index is not None:
+                        img = img[:, :, direction_index]
+                    newArr[:, :, i, j] = img
+        direction_index+=1;
+        arrayData.append(newArr)
 
     return arrayData
 
